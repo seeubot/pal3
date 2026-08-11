@@ -4,187 +4,207 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
   <title>Sports Player</title>
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/shaka-player@4.16.2/dist/shaka-player.compiled.js"></script>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
-    html,body{width:100%;height:100%;background:#0a0a0a;overflow:hidden;font-family:Arial,sans-serif}
-    #overlay{position:fixed;inset:0;background:#0a0a0a;z-index:999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px}
-    #overlay .spinner{width:32px;height:32px;border:3px solid #1a1a1a;border-top-color:#ef4444;border-radius:50%;animation:spin 1s linear infinite}
-    @keyframes spin{to{transform:rotate(360deg)}}
-    #overlay p{color:#555;font-size:12px}
-    #list{position:fixed;inset:0;background:#0a0a0a;z-index:99;display:none;flex-direction:column;overflow-y:auto;padding:16px}
-    #list h2{color:#fff;font-size:16px;text-align:center;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #1a1a1a}
-    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
-    .card{background:#111;border:1px solid #1a1a1a;border-radius:10px;padding:14px;cursor:pointer;text-align:center;color:#ddd;font-size:12px;font-weight:600;transition:all .2s}
+    body{background:#0a0a0a;color:#fff;font-family:system-ui,sans-serif;height:100vh;display:flex;flex-direction:column}
+    .header{background:#000;padding:14px;text-align:center;border-bottom:1px solid #1a1a1a;flex-shrink:0}
+    .header h1{font-size:18px;background:linear-gradient(135deg,#ef4444,#f97316);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    .header .sub{font-size:11px;color:#666;margin-top:4px}
+    #playerContainer{background:#000;flex-shrink:0;position:relative}
+    video{width:100%;max-height:40vh;display:block}
+    #status{position:absolute;top:10px;left:10px;padding:6px 12px;background:rgba(0,0,0,.8);border-radius:15px;font-size:11px;z-index:9}
+    #status.loading{color:#f59e0b}#status.playing{color:#22c55e}#status.error{color:#ef4444}
+    .spinner{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:36px;height:36px;border:3px solid #1a1a1a;border-top-color:#ef4444;border-radius:50%;animation:spin 1s linear infinite;z-index:8}
+    @keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+    .controls-bar{background:#111;padding:8px;flex-shrink:0;display:flex;gap:8px;flex-wrap:wrap}
+    button{padding:8px 14px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;color:#ddd;font-size:12px;cursor:pointer;white-space:nowrap}
+    button:hover{background:#2a2a2a}
+    button.active{background:#ef4444;border-color:#ef4444;color:#fff}
+    .grid{flex:1;overflow-y:auto;padding:8px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+    .card{background:#111;border:1px solid #1a1a1a;border-radius:10px;padding:12px;cursor:pointer;text-align:center;font-size:11px;font-weight:600;color:#ddd;transition:all .15s}
     .card:hover{background:#1a0a0a;border-color:#ef4444}
-    .card:active{transform:scale(.96)}
-    #player{position:fixed;inset:0;background:#000;display:none;align-items:center;justify-content:center}
-    video{width:100%;height:100%;object-fit:contain}
-    .back{position:fixed;top:12px;left:12px;z-index:100;padding:8px 14px;background:rgba(0,0,0,.8);border:1px solid rgba(255,255,255,.1);border-radius:20px;color:#fff;font-size:12px;cursor:pointer;display:none}
-    .toast{position:fixed;top:12px;right:12px;z-index:100;padding:6px 14px;background:rgba(0,0,0,.9);border-radius:20px;font-size:11px;opacity:0;transition:opacity .3s;pointer-events:none}
-    .toast.show{opacity:1}
-    .toast.ok{color:#ef4444}
-    .toast.err{color:#f87171}
-    .mode{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:100;padding:4px 12px;background:rgba(0,0,0,.7);border-radius:12px;font-size:9px;color:#666}
+    .card.active{background:#1a0a0a;border-color:#22c55e;color:#22c55e}
+    .search{width:100%;padding:8px 12px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;color:#fff;font-size:12px;outline:none;flex-shrink:0;margin:6px 8px}
+    .search:focus{border-color:#ef4444}
   </style>
 </head>
 <body>
-<div id="overlay"><div class="spinner"></div><p id="loadMsg">Loading...</p></div>
-<div class="toast" id="toast"></div>
-<button class="back" id="backBtn" onclick="goBack()">← Back</button>
-<div id="list"><h2>⚽ Sports Channels</h2><div class="grid" id="grid"></div></div>
-<div id="player"><video id="v" playsinline controls></video></div>
-<div class="mode" id="modeBadge"></div>
+
+<div class="header">
+  <h1>⚽ Sports Player</h1>
+  <div class="sub" id="channelName">Loading...</div>
+</div>
+
+<div id="playerContainer">
+  <video id="video" playsinline controls autoplay></video>
+  <div id="status">Ready</div>
+  <div class="spinner" id="spinner" style="display:none"></div>
+</div>
+
+<div class="controls-bar" id="categories"></div>
+<input type="text" class="search" id="searchBox" placeholder="🔍 Search channels..." oninput="filterChannels()">
+
+<div class="grid" id="channelGrid"></div>
 
 <script>
-// Auto-generated M3U API
-var M3U_API = "/api/playlist.m3u";
-var JSON_API = "https://sonujson-devloper.vercel.app/Data/sports.json";
+var API = "https://sonujson-devloper.vercel.app/Data/sports.json";
+var player = null;
+var allChannels = [];
+var currentChannel = null;
+var activeCategory = "All";
 
-var player=null,mode='';
-var $overlay=document.getElementById("overlay");
-var $loadMsg=document.getElementById("loadMsg");
-var $toast=document.getElementById("toast");
-var $list=document.getElementById("list");
-var $grid=document.getElementById("grid");
-var $player=document.getElementById("player");
-var $vid=document.getElementById("v");
-var $backBtn=document.getElementById("backBtn");
-var $mode=document.getElementById("modeBadge");
-var _t=null;
-
-function toast(m,t){$toast.textContent=m;$toast.className="toast show "+(t||"ok");if(_t)clearTimeout(_t);_t=setTimeout(function(){$toast.className="toast"},3000);}
-function hideOverlay(){$overlay.style.display="none"}
-
-function rawCookie(c){return c&&c.startsWith("__hdnea__=")?c.slice(10):(c||"");}
-
-function destroyPlayer(){
-  if(player){try{player.destroy();}catch(e){}player=null;}
-  $vid.pause();$vid.removeAttribute('src');$vid.load();mode='';
+function toast(msg, type) {
+  var s = document.getElementById("status");
+  s.textContent = msg;
+  s.className = type || "";
+  setTimeout(function() { s.className = ""; }, 3000);
 }
 
-function goBack(){
+function showSpinner() { document.getElementById("spinner").style.display = "block"; }
+function hideSpinner() { document.getElementById("spinner").style.display = "none"; }
+
+function rawCookie(c) { return c && c.startsWith("__hdnea__=") ? c.slice(10) : (c || ""); }
+
+function destroyPlayer() {
+  if (player) { try { player.destroy(); } catch(e) {} player = null; }
+  var v = document.getElementById("video");
+  v.pause(); v.removeAttribute("src"); v.load();
+}
+
+function playChannel(ch) {
   destroyPlayer();
-  $player.style.display="none";$list.style.display="flex";$backBtn.style.display="none";
-  $mode.textContent='';history.pushState({},'','/');
-}
-
-function playWithHLS(url,cookie,raw,name){
-  mode='hls';$mode.textContent='HLS.js';
+  currentChannel = ch;
+  document.getElementById("channelName").textContent = ch.name;
   
-  if(!Hls.isSupported()){toast("HLS not supported","err");return;}
+  showSpinner();
+  toast("Loading " + ch.name + "...", "loading");
   
-  var u=url.replace(/\/\//g,'/').replace(':/','://');
-  if(raw&&u.indexOf('__hdnea__')===-1) u+=(u.indexOf('?')!==-1?'&':'?')+'__hdnea__='+raw;
-  
-  var hls=new Hls({debug:false,enableWorker:true,manifestLoadingTimeOut:15000});
-  
-  if(cookie){
-    var Loader=Hls.DefaultConfig.loader;
-    class CL extends Loader{
-      load(ctx,cfg,cb){
-        if(ctx.url.indexOf('__hdnea__')===-1&&raw) ctx.url+=(ctx.url.indexOf('?')!==-1?'&':'?')+'__hdnea__='+raw;
-        ctx.headers=ctx.headers||{};
-        ctx.headers['Referer']='https://www.jiotv.com/';
-        ctx.headers['Cookie']=cookie;
-        super.load(ctx,cfg,cb);
-      }
-    }
-    hls.config.loader=CL;
-  }
-  
-  hls.on(Hls.Events.MANIFEST_PARSED,function(){
-    hideOverlay();toast("▶ "+name,"ok");$vid.play().catch(function(){});
-  });
-  
-  hls.on(Hls.Events.ERROR,function(ev,d){
-    if(d.fatal&&d.type===Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
-    else toast("Stream error","err");
-  });
-  
-  hls.loadSource(u);hls.attachMedia($vid);player=hls;
-}
-
-function playWithShaka(url,cookie,raw,keyId,key,name){
-  mode='shaka';$mode.textContent='Shaka';
-  
-  if(!shaka.Player.isBrowserSupported()){playWithHLS(url,cookie,raw,name);return;}
   shaka.polyfill.installAll();
   
-  var p=new shaka.Player();
-  p.attach($vid).then(function(){
-    var cfg={drm:{},manifest:{retryParameters:{maxAttempts:2,timeout:10000}},streaming:{bufferingGoal:10}};
+  if (!shaka.Player.isBrowserSupported()) {
+    hideSpinner();
+    toast("Browser not supported", "error");
+    return;
+  }
+  
+  player = new shaka.Player();
+  player.attach(document.getElementById("video"));
+  
+  var config = {
+    drm: {},
+    manifest: { retryParameters: { maxAttempts: 3, baseDelay: 500, timeout: 15000 } },
+    streaming: { bufferingGoal: 10, retryParameters: { maxAttempts: 3, baseDelay: 500, timeout: 15000 } }
+  };
+  
+  if (ch.key_id && ch.key) {
+    config.drm.clearKeys = {};
+    config.drm.clearKeys[ch.key_id] = ch.key;
+  }
+  
+  player.configure(config);
+  
+  var cookie = ch.cookie || "";
+  var raw = rawCookie(cookie);
+  
+  player.getNetworkingEngine().registerRequestFilter(function(type, req) {
+    req.headers["Referer"] = "https://www.jiotv.com/";
+    req.headers["Origin"] = "https://www.jiotv.com";
+    req.headers["User-Agent"] = "Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36";
+    if (cookie) req.headers["Cookie"] = cookie;
     
-    if(keyId&&key){cfg.drm.clearKeys={};cfg.drm.clearKeys[keyId]=key;}
-    
-    p.configure(cfg);
-    p.getNetworkingEngine().registerRequestFilter(function(t,r){
-      r.headers["Referer"]="https://www.jiotv.com/";
-      r.headers["User-Agent"]="Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36";
-      if(cookie) r.headers["Cookie"]=cookie;
-      if(t===0||t===1) r.uris=r.uris.map(function(u){
-        if(raw&&u.indexOf('__hdnea__')===-1) return u+(u.indexOf('?')!==-1?'&':'?')+'__hdnea__='+raw;
+    if (raw && (type === 0 || type === 1)) {
+      req.uris = req.uris.map(function(u) {
+        if (u.indexOf("__hdnea__") === -1) {
+          return u + (u.indexOf("?") !== -1 ? "&" : "?") + "__hdnea__=" + raw;
+        }
         return u;
       });
-    });
-    
-    p.addEventListener("error",function(ev){
-      if(ev.detail.code===6020||ev.detail.code===4014){
-        p.configure({drm:{}});
-        p.load(url).then(function(){hideOverlay();$vid.play().catch(function(){});}).catch(function(){});
-      }
-    });
-    
-    return p.load(url);
-  }).then(function(){
-    hideOverlay();toast("▶ "+name,"ok");$vid.play().catch(function(){});
-  }).catch(function(){
-    destroyPlayer();playWithHLS(url,cookie,raw,name);
+    }
   });
   
-  player=p;
+  player.addEventListener("error", function(ev) {
+    var err = ev.detail;
+    hideSpinner();
+    toast("Error: " + (err.message || err.code), "error");
+  });
+  
+  var url = (ch.stream_url || "").replace(/\/\//g, "/").replace(":/", "://");
+  
+  player.load(url).then(function() {
+    hideSpinner();
+    toast("▶ " + ch.name, "playing");
+    document.getElementById("video").play().catch(function() {});
+  }).catch(function(e) {
+    hideSpinner();
+    toast("Stream unavailable", "error");
+  });
+  
+  renderChannels();
 }
 
-function playChannel(ch){
-  destroyPlayer();
-  $list.style.display="none";$player.style.display="flex";$backBtn.style.display="block";
-  $overlay.style.display="flex";$loadMsg.textContent="Loading "+ch.name+"...";
-  toast("Loading...","ok");
+function filterChannels() {
+  var search = (document.getElementById("searchBox").value || "").toLowerCase();
+  var filtered = allChannels;
   
-  var url=ch.stream_url||"",cookie=ch.cookie||"",raw=rawCookie(cookie);
-  var keyId=ch.key_id||"",key=ch.key||"";
-  
-  playWithHLS(url,cookie,raw,ch.name);
-}
-
-async function init(){
-  try{
-    var r=await fetch(JSON_API);
-    var d=await r.json();
-    var channels=d.channels||[];
-    
-    var id=new URLSearchParams(location.search).get("id");
-    if(id){
-      var ch=channels.find(function(c){return c.id===id;});
-      if(ch){playChannel(ch);return;}
-    }
-    
-    hideOverlay();
-    var html='';
-    channels.forEach(function(ch){
-      html+='<div class="card" onclick="playChannel('+JSON.stringify(ch).replace(/"/g,'&quot;')+')">'+ch.name+'</div>';
-    });
-    $grid.innerHTML=html;
-    $list.style.display="flex";
-    toast(channels.length+" channels loaded","ok");
-  }catch(e){
-    $loadMsg.textContent="Connection error";
-    toast("Failed to load","err");
+  if (activeCategory !== "All") {
+    filtered = filtered.filter(function(ch) { return ch.category === activeCategory; });
   }
+  
+  if (search) {
+    filtered = filtered.filter(function(ch) {
+      return ch.name.toLowerCase().includes(search);
+    });
+  }
+  
+  var html = "";
+  filtered.forEach(function(ch) {
+    var active = currentChannel && currentChannel.id === ch.id;
+    html += '<div class="card' + (active ? ' active' : '') + '" onclick="playChannel(' + JSON.stringify(ch).replace(/"/g, '&quot;') + ')">' + ch.name + '</div>';
+  });
+  
+  document.getElementById("channelGrid").innerHTML = html || '<div style="color:#555;text-align:center;padding:20px">No channels found</div>';
 }
 
-document.addEventListener("DOMContentLoaded",init);
+function renderCategories() {
+  var cats = {};
+  allChannels.forEach(function(ch) {
+    if (ch.category) cats[ch.category] = true;
+  });
+  
+  var html = '<button class="' + (activeCategory === "All" ? "active" : "") + '" onclick="setCategory(\'All\')">All</button>';
+  Object.keys(cats).sort().forEach(function(cat) {
+    html += '<button class="' + (activeCategory === cat ? "active" : "") + '" onclick="setCategory(\'' + cat + '\')">' + cat + '</button>';
+  });
+  
+  document.getElementById("categories").innerHTML = html;
+}
+
+function setCategory(cat) {
+  activeCategory = cat;
+  renderCategories();
+  filterChannels();
+}
+
+function renderChannels() {
+  renderCategories();
+  filterChannels();
+}
+
+// Load channels
+fetch(API, { headers: { Accept: "application/json" } })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    allChannels = d.channels || [];
+    document.getElementById("channelName").textContent = allChannels.length + " channels";
+    renderChannels();
+    if (allChannels.length > 0) {
+      playChannel(allChannels[0]);
+    }
+  })
+  .catch(function() {
+    document.getElementById("channelName").textContent = "Connection error";
+  });
 </script>
 </body>
 </html>
