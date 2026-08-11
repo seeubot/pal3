@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>Sports Player</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/shaka-player@4.16.2/dist/shaka-player.compiled.js"></script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body{width:100%;height:100%;background:#0a0a0a;overflow:hidden;font-family:Arial,sans-serif}
+    #overlay{position:fixed;inset:0;background:#0a0a0a;z-index:999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px}
+    #overlay .spinner{width:32px;height:32px;border:3px solid #1a1a1a;border-top-color:#ef4444;border-radius:50%;animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    #overlay p{color:#555;font-size:12px}
+    #list{position:fixed;inset:0;background:#0a0a0a;z-index:99;display:none;flex-direction:column;overflow-y:auto;padding:16px}
+    #list h2{color:#fff;font-size:16px;text-align:center;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #1a1a1a}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+    .card{background:#111;border:1px solid #1a1a1a;border-radius:10px;padding:14px;cursor:pointer;text-align:center;color:#ddd;font-size:12px;font-weight:600;transition:all .2s}
+    .card:hover{background:#1a0a0a;border-color:#ef4444}
+    .card:active{transform:scale(.96)}
+    #player{position:fixed;inset:0;background:#000;display:none;align-items:center;justify-content:center}
+    video{width:100%;height:100%;object-fit:contain}
+    .back{position:fixed;top:12px;left:12px;z-index:100;padding:8px 14px;background:rgba(0,0,0,.8);border:1px solid rgba(255,255,255,.1);border-radius:20px;color:#fff;font-size:12px;cursor:pointer;display:none}
+    .toast{position:fixed;top:12px;right:12px;z-index:100;padding:6px 14px;background:rgba(0,0,0,.9);border-radius:20px;font-size:11px;opacity:0;transition:opacity .3s;pointer-events:none}
+    .toast.show{opacity:1}
+    .toast.ok{color:#ef4444}
+    .toast.err{color:#f87171}
+    .mode{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:100;padding:4px 12px;background:rgba(0,0,0,.7);border-radius:12px;font-size:9px;color:#666}
+  </style>
+</head>
+<body>
+<div id="overlay"><div class="spinner"></div><p id="loadMsg">Loading...</p></div>
+<div class="toast" id="toast"></div>
+<button class="back" id="backBtn" onclick="goBack()">← Back</button>
+<div id="list"><h2>⚽ Sports Channels</h2><div class="grid" id="grid"></div></div>
+<div id="player"><video id="v" playsinline controls></video></div>
+<div class="mode" id="modeBadge"></div>
+
+<script>
+// Auto-generated M3U API
+var M3U_API = "/api/playlist.m3u";
+var JSON_API = "https://sonujson-devloper.vercel.app/Data/sports.json";
+
+var player=null,mode='';
+var $overlay=document.getElementById("overlay");
+var $loadMsg=document.getElementById("loadMsg");
+var $toast=document.getElementById("toast");
+var $list=document.getElementById("list");
+var $grid=document.getElementById("grid");
+var $player=document.getElementById("player");
+var $vid=document.getElementById("v");
+var $backBtn=document.getElementById("backBtn");
+var $mode=document.getElementById("modeBadge");
+var _t=null;
+
+function toast(m,t){$toast.textContent=m;$toast.className="toast show "+(t||"ok");if(_t)clearTimeout(_t);_t=setTimeout(function(){$toast.className="toast"},3000);}
+function hideOverlay(){$overlay.style.display="none"}
+
+function rawCookie(c){return c&&c.startsWith("__hdnea__=")?c.slice(10):(c||"");}
+
+function destroyPlayer(){
+  if(player){try{player.destroy();}catch(e){}player=null;}
+  $vid.pause();$vid.removeAttribute('src');$vid.load();mode='';
+}
+
+function goBack(){
+  destroyPlayer();
+  $player.style.display="none";$list.style.display="flex";$backBtn.style.display="none";
+  $mode.textContent='';history.pushState({},'','/');
+}
+
+function playWithHLS(url,cookie,raw,name){
+  mode='hls';$mode.textContent='HLS.js';
+  
+  if(!Hls.isSupported()){toast("HLS not supported","err");return;}
+  
+  var u=url.replace(/\/\//g,'/').replace(':/','://');
+  if(raw&&u.indexOf('__hdnea__')===-1) u+=(u.indexOf('?')!==-1?'&':'?')+'__hdnea__='+raw;
+  
+  var hls=new Hls({debug:false,enableWorker:true,manifestLoadingTimeOut:15000});
+  
+  if(cookie){
+    var Loader=Hls.DefaultConfig.loader;
+    class CL extends Loader{
+      load(ctx,cfg,cb){
+        if(ctx.url.indexOf('__hdnea__')===-1&&raw) ctx.url+=(ctx.url.indexOf('?')!==-1?'&':'?')+'__hdnea__='+raw;
+        ctx.headers=ctx.headers||{};
+        ctx.headers['Referer']='https://www.jiotv.com/';
+        ctx.headers['Cookie']=cookie;
+        super.load(ctx,cfg,cb);
+      }
+    }
+    hls.config.loader=CL;
+  }
+  
+  hls.on(Hls.Events.MANIFEST_PARSED,function(){
+    hideOverlay();toast("▶ "+name,"ok");$vid.play().catch(function(){});
+  });
+  
+  hls.on(Hls.Events.ERROR,function(ev,d){
+    if(d.fatal&&d.type===Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+    else toast("Stream error","err");
+  });
+  
+  hls.loadSource(u);hls.attachMedia($vid);player=hls;
+}
+
+function playWithShaka(url,cookie,raw,keyId,key,name){
+  mode='shaka';$mode.textContent='Shaka';
+  
+  if(!shaka.Player.isBrowserSupported()){playWithHLS(url,cookie,raw,name);return;}
+  shaka.polyfill.installAll();
+  
+  var p=new shaka.Player();
+  p.attach($vid).then(function(){
+    var cfg={drm:{},manifest:{retryParameters:{maxAttempts:2,timeout:10000}},streaming:{bufferingGoal:10}};
+    
+    if(keyId&&key){cfg.drm.clearKeys={};cfg.drm.clearKeys[keyId]=key;}
+    
+    p.configure(cfg);
+    p.getNetworkingEngine().registerRequestFilter(function(t,r){
+      r.headers["Referer"]="https://www.jiotv.com/";
+      r.headers["User-Agent"]="Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36";
+      if(cookie) r.headers["Cookie"]=cookie;
+      if(t===0||t===1) r.uris=r.uris.map(function(u){
+        if(raw&&u.indexOf('__hdnea__')===-1) return u+(u.indexOf('?')!==-1?'&':'?')+'__hdnea__='+raw;
+        return u;
+      });
+    });
+    
+    p.addEventListener("error",function(ev){
+      if(ev.detail.code===6020||ev.detail.code===4014){
+        p.configure({drm:{}});
+        p.load(url).then(function(){hideOverlay();$vid.play().catch(function(){});}).catch(function(){});
+      }
+    });
+    
+    return p.load(url);
+  }).then(function(){
+    hideOverlay();toast("▶ "+name,"ok");$vid.play().catch(function(){});
+  }).catch(function(){
+    destroyPlayer();playWithHLS(url,cookie,raw,name);
+  });
+  
+  player=p;
+}
+
+function playChannel(ch){
+  destroyPlayer();
+  $list.style.display="none";$player.style.display="flex";$backBtn.style.display="block";
+  $overlay.style.display="flex";$loadMsg.textContent="Loading "+ch.name+"...";
+  toast("Loading...","ok");
+  
+  var url=ch.stream_url||"",cookie=ch.cookie||"",raw=rawCookie(cookie);
+  var keyId=ch.key_id||"",key=ch.key||"";
+  
+  playWithHLS(url,cookie,raw,ch.name);
+}
+
+async function init(){
+  try{
+    var r=await fetch(JSON_API);
+    var d=await r.json();
+    var channels=d.channels||[];
+    
+    var id=new URLSearchParams(location.search).get("id");
+    if(id){
+      var ch=channels.find(function(c){return c.id===id;});
+      if(ch){playChannel(ch);return;}
+    }
+    
+    hideOverlay();
+    var html='';
+    channels.forEach(function(ch){
+      html+='<div class="card" onclick="playChannel('+JSON.stringify(ch).replace(/"/g,'&quot;')+')">'+ch.name+'</div>';
+    });
+    $grid.innerHTML=html;
+    $list.style.display="flex";
+    toast(channels.length+" channels loaded","ok");
+  }catch(e){
+    $loadMsg.textContent="Connection error";
+    toast("Failed to load","err");
+  }
+}
+
+document.addEventListener("DOMContentLoaded",init);
+</script>
+</body>
+</html>
